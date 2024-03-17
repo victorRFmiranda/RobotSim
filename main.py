@@ -26,11 +26,8 @@ last_time = pygame.time.get_ticks()
 running = True
 
 obstacles, freeSpace = gfx.get_mapObsFree()
-# print(obstacles)
-# input("WAIT")
 
 # simulation loop
-
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -39,20 +36,23 @@ while running:
     dt=(pygame.time.get_ticks()-last_time)/1000
     last_time = pygame.time.get_ticks()
 
+    # start world
     gfx.map.blit(gfx.map_img,(0,0))
 
-    # calcula nova pos do robo com base em v,w
+    # Robot kinematics [v (m/s), w(rad/s), dt]
     robot.kinematics(0,0.5,dt)
-    # calcula o point_cloud
+
+    # extract point_cloud and lidar scan
     point_cloud, scan = laser.sense_obstacles(robot.x, robot.y, robot.heading)
-    # desenha o lidar
+
+    # draw liDAR
     gfx.draw_sensor_data(point_cloud)
-    # desenha o robo
+
+    # draw Robot
     gfx.draw_robot(robot.x, robot.y, robot.heading)
 
-    # checa colisão com obstaculo
+    # Stop sim if collision is True
     running = robot.check_collision(point_cloud, dt)
-
 
 
     pygame.display.update()
