@@ -4,7 +4,7 @@ import numpy as np
 import sys
 import cv2
 
-import bresenham
+from bresenham import *
 
 TRESHOLD_P_FREE = 0.3
 TRESHOLD_P_OCC = 0.6

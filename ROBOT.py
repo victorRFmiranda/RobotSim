@@ -2,9 +2,13 @@ import pygame
 import math
 import numpy as np
 import random
+from collections import deque
 
-import grid_map
-import map_utils
+
+import cv2
+
+from grid_map import *
+from map_utils import *
 
 MAP_SCALE=10
 
@@ -72,12 +76,12 @@ class Robot:
                     closest_obs = (point,dist)
 
             if closest_obs[1] < self.min_obs_dist*self.m2p:
-                return False
-            else:
                 return True
+            else:
+                return False
 
         else:
-            return True
+            return False
 
 
     def check_collision2(self, point_cloud, obs_dist):
@@ -91,12 +95,12 @@ class Robot:
                     closest_obs = (point,dist)
 
             if closest_obs[1] < obs_dist*self.m2p:
-                return False
-            else:
                 return True
+            else:
+                return False
 
         else:
-            return True
+            return False
 
     def step(self, v, w, dt):
         b = 0.5
@@ -185,6 +189,16 @@ class LiDAR:
         self.numberLines = 100
         self.lidar_scan = sensor_range[0]*np.ones((self.numberLines,2))
 
+        # for map
+        self.P_prior = 0.5
+        self.P_occ = 0.9
+        self.P_free = 0.3
+        self.gridMap = GridMap(X_lim = [0, self.map_height], 
+                  Y_lim = [0, self.map_width], 
+                  resolution = MAP_SCALE, 
+                  p = self.P_prior)
+        
+
     def sense_obstacles(self, x, y, heading):
         obstacles = []
         x1, y1 = x, y
@@ -212,86 +226,76 @@ class LiDAR:
 
 
 
-    # ########################################
-    # '''         Compute Map         '''
-    # ########################################
-    # def get_map(self):
+    ########################################
+    '''         Compute Map         '''
+    ########################################
+    def get_map(self, lidar_scan, robot_pose):
 
-    #     map_increase = 0.0
+        map_increase = 0.0
 
-    #     lidar = lidar_scan
-    #     pose = [self._env.get_robot_pose_x(),self._env.get_robot_pose_y(),self._env.get_robot_pose_orientation()]
-    #     # pmap,map_increase  = self.Map.update_map(lidar,pose)
+        lidar = lidar_scan
+        pose = robot_pose
+        # pmap,map_increase  = self.Map.update_map(lidar,pose)
 
-    #     ang_step = 0.00436332312998582394230922692122153178360717972135431364024297860042752278650862360920560392408627370553076123126
-    #     angle_min = -2.3561944902
-    #     angle_max = 2.3561944902
-    #     range_min = 0.06
-    #     range_max = 20
-    #     angles = np.arange(angle_min,angle_max,ang_step)
+        ang_step = 0.04759988999999998
+        angle_min = -2.3561944902
+        angle_max = 2.3561944902
+        range_min = 0.1
+        range_max = 5
+        angles = np.arange(angle_min,angle_max,ang_step)
 
-    #     alpha = 1.0  # delta for max rang noise
+        alpha = 1.0  # delta for max rang noise
 
-    #     # Lidar measurements in X-Y plane
-    #     distances_x, distances_y = lidar_scan_xy(lidar, angles, pose[0], pose[1], pose[2])
+        # Lidar measurements in X-Y plane
+        distances_x, distances_y = lidar_scan_xy(lidar, angles, pose[0], pose[1], pose[2])
 
-    #     # x1 and y1 for Bresenham's algorithm
-    #     x1, y1 = self.gridMap.discretize(pose[0], pose[1])
+        # x1 and y1 for Bresenham's algorithm
+        x1, y1 = self.gridMap.discretize(pose[0], pose[1])
 
-    #     # for BGR image of the grid map
-    #     X2 = []
-    #     Y2 = []
+        # for BGR image of the grid map
+        X2 = []
+        Y2 = []
 
-    #     for (dist_x, dist_y, dist) in zip(distances_x, distances_y, lidar):
+        for (dist_x, dist_y, dist) in zip(distances_x, distances_y, lidar):
 
-    #         # x2 and y2 for Bresenham's algorithm
-    #         x2, y2 = self.gridMap.discretize(dist_x, dist_y)
+            # x2 and y2 for Bresenham's algorithm
+            x2, y2 = self.gridMap.discretize(dist_x, dist_y)
 
-    #         # draw a discrete line of free pixels, [robot position -> laser hit spot)
-    #         for (x_bres, y_bres) in bresenham(self.gridMap, x1, y1, x2, y2):
+            # draw a discrete line of free pixels, [robot position -> laser hit spot)
+            for (x_bres, y_bres) in bresenham(self.gridMap, x1, y1, x2, y2):
 
-    #             self.gridMap.update(x = x_bres, y = y_bres, p = self.P_free)
+                self.gridMap.update(x = x_bres, y = y_bres, p = self.P_free)
 
-    #         # mark laser hit spot as ocuppied (if exists)
-    #         if dist < range_max - alpha:
+            # mark laser hit spot as ocuppied (if exists)
+            if dist < range_max - alpha:
                 
-    #             self.gridMap.update(x = x2, y = y2, p = self.P_occ)
+                self.gridMap.update(x = x2, y = y2, p = self.P_occ)
 
-    #         # for BGR image of the grid map
-    #         X2.append(x2)
-    #         Y2.append(y2)
+            # for BGR image of the grid map
+            X2.append(x2)
+            Y2.append(y2)
 
-    #     # converting grip map to BGR image
-    #     # bgr_image = self.gridMap.to_BGR_image()
+        # converting grip map to BGR image
+        # bgr_image = self.gridMap.to_BGR_image()
 
-    #     gray_image, map_increase = self.gridMap.to_grayscale_image()
-
-    #     # set_pixel_color(bgr_image, x1, y1, 'BLUE')
-            
-    #     # # # marking neighbouring pixels with blue pixel value 
-    #     # for (x, y) in self.gridMap.find_neighbours(x1, y1):
-    #     #     set_pixel_color(bgr_image, x, y, 'BLUE')
-
-    #     # # marking laser hit spots with green value
-    #     # for (x, y) in zip(X2,Y2):
-    #     #     set_pixel_color(bgr_image, x, y, 'GREEN')
+        gray_image, map_increase = self.gridMap.to_grayscale_image()
 
 
-    #     resized_image = cv2.resize(gray_image,(100, 100),interpolation = cv2.INTER_NEAREST)
+        resized_image = cv2.resize(gray_image,(500, 500),interpolation = cv2.INTER_NEAREST)
 
 
-    #     rotated_image = cv2.rotate(src = gray_image, 
-    #                    rotateCode = cv2.ROTATE_90_COUNTERCLOCKWISE)
+        rotated_image = cv2.rotate(src = gray_image, 
+                       rotateCode = cv2.ROTATE_90_COUNTERCLOCKWISE)
 
 
-    #     # cv2.imshow('Mapa',rotated_image)
-    #     # cv2.waitKey(0)
-    #     # cv2.destroyAllWindows()
+        # cv2.imshow('Mapa',gray_image)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
 
-    #     pmap = rotated_image
+        pmap = rotated_image
 
-    #     return pmap, map_increase
+        return pmap, map_increase
 
 
 
@@ -299,7 +303,7 @@ class Environment:
 
     def __init__(self, dimentions, map_img_path):
         self.gfx = Graphics(dimentions,'DDR.png','world/mapa_2.png')
-        start = (10,10)
+        start = (15,10)
         self.robot = Robot(start)
         sensor_range = 5, math.radians(135)
         self.lidar = LiDAR(sensor_range, self.gfx.map)
@@ -310,19 +314,23 @@ class Environment:
 
         obs, self.free_areas = self.gfx.get_mapObsFree()
 
+        self.last_map_info = 0.0
+        self.delta_map = deque(maxlen=50)
+        self.map_penality = 0
+
     def reset(self, dt):
-        done = False
-        while not done:
+        done = True
+        while done:
             new_pixel = random.choice(self.free_areas)
             new_pos = (pixels_to_meter(new_pixel[0]),pixels_to_meter(new_pixel[1]))
             self.robot = Robot(new_pos)
-            done,_ = self.step(0,0,dt)
+            _,done,_,_ = self.step(0,0,dt,0)
             done = self.robot.check_collision2(self.point_cloud, 3)
             t_pos = random.choice(self.free_areas)
             self.target_pos = (pixels_to_meter(t_pos[0]),pixels_to_meter(t_pos[1]))
 
 
-    def step(self, liner_vel, ang_vel,dt):
+    def step(self, liner_vel, ang_vel,dt, num_steps):
 
         # update map
         self.gfx.map.blit(self.gfx.map_img,(0,0))
@@ -356,8 +364,81 @@ class Environment:
         observation.append(lin_vel)
         observation.append(ang_vel)
 
-        return done, observation
+        # print(self.point_cloud)
+
+        mapa_, map_info = self.lidar.get_map(self.scan[:,0].tolist(), robot_pose)
+
+        reward, done = self.calculate_reward(robot_pose, done, lin_vel, ang_vel, self.scan, map_info, num_steps)
+
+        return reward, done, observation, mapa_
         
+
+
+    def calculate_reward(self, robot_pose, env_done, linear_velocity, angular_velocity,
+                         Lidar_scan, map_info, num_steps):
+        done = False
+        reward = 0.0
+
+        # """
+        #     Distancy
+        # """
+        distance_robot_to_end = distance(robot_pose[0:2], self.target_pos)
+ 
+        # """
+        #     Map Data Not Increasing - Prevent Local Minima
+        # """
+        self.delta_map.append(map_info - self.last_map_info)
+        self.last_map_info = map_info
+        # if(np.mean(self.delta_map) == 0):
+        #     reward = -self.map_penality
+        #     self.map_penality += 1
+
+        
+        # """
+        #     Collision, Conclusion, Always pen
+        # """
+        if env_done:
+            reward = -200
+            done = True
+        elif distance_robot_to_end < 0.5:
+            reward = 100
+            done = True
+        elif num_steps > 500:
+            reward = -200
+            done = True
+        else: 
+            G = np.mean(self.delta_map) + 0.1
+            D = distance_robot_to_end + 0.0001  # prevent division by 0
+            KG = 0.2
+            # KG = 1
+            L = Lidar_scan[int(round(len(Lidar_scan)/2.0)),0] # Lidar measure in robot orientation (middle of the measures)
+            K3 = 1
+
+            # OUR Method (PAPER) - test 1
+            # r = KG*(G/D) + K3*L + (linear_velocity - abs(angular_velocity)) 
+
+            # New version - test2
+            r = -KG*(D/G)
+
+            # print("GD = ", min(KG*(D/G),10))
+            # print("L = ", (1/(L+0.0001)))
+            # print("vel = ", 1/(0.0001+(linear_velocity - abs(angular_velocity))))
+            # print("reward = ", r)
+
+            reward = r
+            # reward = min(0, -D + r)
+            # reward = -1/r
+
+            # txtfile = open(txt_file,"a")
+            # txtfile.write("D = " + str(-D) + "; r = " + str(r) + "; reward = " + str(reward) + "\n" )
+            # txtfile.close()
+
+
+        # self._robot_x_last = robot_x
+        # self._robot_y_last = robot_y
+        # self._robot_orientation_last = robot_orientation
+
+        return reward, done
 
 
 
