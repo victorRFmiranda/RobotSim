@@ -197,6 +197,10 @@ class LiDAR:
                   Y_lim = [0, self.map_width], 
                   resolution = MAP_SCALE, 
                   p = self.P_prior)
+
+        #gray color start - 192
+        self.mapa_pointCloud = 192*np.ones((self.map_width,self.map_height))
+        self.Mapa_ganhoInfo = 0
         
 
     def sense_obstacles(self, x, y, heading):
@@ -209,6 +213,7 @@ class LiDAR:
             x2 = x1 + self.sensor_range[0] * math.cos(angle)
             y2 = y1 - self.sensor_range[0] * math.sin(angle)
             self.lidar_scan[j,1] = angle
+            self.lidar_scan[j,0] = pixels_to_meter(self.sensor_range[0])
             for i in range(0, 100):
                 u = i / 100
                 x = int(x2 * u + x1 * (1 - u))
@@ -216,87 +221,16 @@ class LiDAR:
                 if 0 < x < self.map_width and 0 < y < self.map_height:
                     color = self.map.get_at((x, y))
                     self.map.set_at((x, y), (0, 208, 255)) ### Preciso add as distancias em um vetor tambem
+                    self.mapa_pointCloud[x,y] = 255 # white
+                    self.Mapa_ganhoInfo += 1
                     if (color[0], color[1], color[2]) == (0, 0, 0):
+                        self.mapa_pointCloud[x,y] = 0 #black
                         obstacles.append([x,y])
                         self.lidar_scan[j] = [pixels_to_meter(distance([x,y],[x1,y1])),angle]
                         break
 
             j+=1
         return obstacles, self.lidar_scan
-
-
-
-    ########################################
-    '''         Compute Map         '''
-    ########################################
-    def get_map(self, lidar_scan, robot_pose):
-
-        map_increase = 0.0
-
-        lidar = lidar_scan
-        pose = robot_pose
-        # pmap,map_increase  = self.Map.update_map(lidar,pose)
-
-        ang_step = 0.04759988999999998
-        angle_min = -2.3561944902
-        angle_max = 2.3561944902
-        range_min = 0.1
-        range_max = 5
-        angles = np.arange(angle_min,angle_max,ang_step)
-
-        alpha = 1.0  # delta for max rang noise
-
-        # Lidar measurements in X-Y plane
-        distances_x, distances_y = lidar_scan_xy(lidar, angles, pose[0], pose[1], pose[2])
-
-        # x1 and y1 for Bresenham's algorithm
-        x1, y1 = self.gridMap.discretize(pose[0], pose[1])
-
-        # for BGR image of the grid map
-        X2 = []
-        Y2 = []
-
-        for (dist_x, dist_y, dist) in zip(distances_x, distances_y, lidar):
-
-            # x2 and y2 for Bresenham's algorithm
-            x2, y2 = self.gridMap.discretize(dist_x, dist_y)
-
-            # draw a discrete line of free pixels, [robot position -> laser hit spot)
-            for (x_bres, y_bres) in bresenham(self.gridMap, x1, y1, x2, y2):
-
-                self.gridMap.update(x = x_bres, y = y_bres, p = self.P_free)
-
-            # mark laser hit spot as ocuppied (if exists)
-            if dist < range_max - alpha:
-                
-                self.gridMap.update(x = x2, y = y2, p = self.P_occ)
-
-            # for BGR image of the grid map
-            X2.append(x2)
-            Y2.append(y2)
-
-        # converting grip map to BGR image
-        # bgr_image = self.gridMap.to_BGR_image()
-
-        gray_image, map_increase = self.gridMap.to_grayscale_image()
-
-
-        resized_image = cv2.resize(gray_image,(500, 500),interpolation = cv2.INTER_NEAREST)
-
-
-        rotated_image = cv2.rotate(src = gray_image, 
-                       rotateCode = cv2.ROTATE_90_COUNTERCLOCKWISE)
-
-
-        # cv2.imshow('Mapa',gray_image)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-
-        pmap = rotated_image
-
-        return pmap, map_increase
-
 
 
 class Environment:
@@ -364,13 +298,12 @@ class Environment:
         observation.append(lin_vel)
         observation.append(ang_vel)
 
-        # print(self.point_cloud)
-
-        mapa_, map_info = self.lidar.get_map(self.scan[:,0].tolist(), robot_pose)
+        # Calculate the increase in map information by adding white cells and black cells
+        map_info = np.count_nonzero(self.lidar.mapa_pointCloud == 0) + np.count_nonzero(self.lidar.mapa_pointCloud == 255)
 
         reward, done = self.calculate_reward(robot_pose, done, lin_vel, ang_vel, self.scan, map_info, num_steps)
 
-        return reward, done, observation, mapa_
+        return reward, done, observation, self.lidar.mapa_pointCloud
         
 
 
@@ -414,6 +347,8 @@ class Environment:
             L = Lidar_scan[int(round(len(Lidar_scan)/2.0)),0] # Lidar measure in robot orientation (middle of the measures)
             K3 = 1
 
+            print(G)
+            
             # OUR Method (PAPER) - test 1
             # r = KG*(G/D) + K3*L + (linear_velocity - abs(angular_velocity)) 
 

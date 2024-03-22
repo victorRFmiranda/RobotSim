@@ -5,6 +5,7 @@ from ROBOT import Environment,Robot,LiDAR
 import cv2
 import matplotlib.pyplot as plt
 
+
 # Max  x == y (m), need to be equals
 MAP_DIMENSIONS = 50
 
@@ -42,9 +43,6 @@ while not done:
                 vel = 0.0
                 w_vel = -0.5
             if event.key == pygame.K_SPACE:
-                # cv2.imshow('Mapa',mapa_)
-                # cv2.waitKey(0)
-                # cv2.destroyAllWindows()
                 plt.imshow(mapa_, cmap='gray')
                 plt.colorbar()  # Adicionar uma barra de cores para visualização
                 plt.show()
@@ -55,6 +53,9 @@ while not done:
 
     # Robot kinematics [v (m/s), w(rad/s), dt]
     reward, done, obs, mapa_ = env.step(vel,w_vel,dt,1)
+
+    
+    # print(mapa_)
     
     # print(done)
 
